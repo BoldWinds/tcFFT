@@ -60,7 +60,7 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
     return TCFFT_SUCCESS;
 } 
 
-tcfftResult tcfftExec(tcfftHandle plan, half *data){
+tcfftResult tcfftExecB2B(tcfftHandle plan, half *data){
     return TCFFT_SUCCESS;
 }
 

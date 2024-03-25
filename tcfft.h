@@ -48,3 +48,7 @@ tcfftResult tcfftExecB2B(tcfftHandle plan, half *data);
 tcfftResult tcfftExecC2C(tcfftHandle plan, half *data);
 
 tcfftResult tcfftDestroy(tcfftHandle plan);
+
+// 以下是内核函数的相关定义
+//template <int CONT_SIZE, int NUM_WARP>  // 32 8
+__global__ void layer_256_0(half2 *in, half *F_real, half *F_imag);
