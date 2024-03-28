@@ -7,7 +7,7 @@
 #include <cufft.h>
 #include <cufftXt.h>
 #include <cuda_fp16.h>
-//#include "test.h"
+#include "test.h"
 extern char *optarg;
 extern int optopt;
 
@@ -22,7 +22,6 @@ extern int optopt;
 double get_error(double *tested, double *standard, int n, int n_batch){
     double error = 0;
     // 并行处理每个批次和每个点，计算误差
-#pragma omp parallel for reduction(+ : error)
     for (int i = 0; i < n_batch; ++i){
         for (int j = 0; j < n; ++j){
             // 计算实部的误差
@@ -51,8 +50,10 @@ void generate_data(double *data, int n, int batch, int seed = 42){
     srand(seed);
     for (int i = 0; i < batch; ++i){
         for (int j = 0; j < n; ++j){
-            data[0 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
-            data[1 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            data[0 + j * 2 + i * n * 2] = double(j);
+            data[1 + j * 2 + i * n * 2] = 0.0;
+            //data[0 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            //data[1 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
         }
     }  
 }
@@ -153,28 +154,28 @@ int main(int argc, char *argv[]){
 
     // 分配内存并生成测试数据
     double *data = (double *)malloc(sizeof(double) * n * n_batch * 2);
-    //generate_data(data, n, n_batch, seed);
-    for (int i = 0; i < n; i++){
-        data[i * 2] = i;
-        data[i * 2 + 1] = 0;
-    }
-    
+    generate_data(data, n, n_batch, seed);
 
     // 使用CUFFT计算标准结果
     double *standard = (double *)malloc(sizeof(double) * n * n_batch * 2);
     get_standard_result_half(data, standard, n, n_batch);
 
-
-    printMatrix(standard, 4, 4);
-
     // 使用自定义的FFT实现计算测试结果
-    /*double *tested = (double *)malloc(sizeof(double) * n * n_batch * 2);
+    double *tested = (double *)malloc(sizeof(double) * n * n_batch * 2);
     setup(data, n, n_batch);
     doit(1);
     finalize(tested);
 
     // 计算并打印误差
-    printf("%e\n", get_error(tested, standard, n, n_batch));*/
+    printf("%e\n", get_error(tested, standard, n, n_batch));
+    printf("%e\n", get_error(standard, standard, n, n_batch));
+
+    printf("Data: \n");
+    printMatrix(data, 16, 16);
+    printf("Test: \n");
+    printMatrix(tested, 16, 16);
+    printf("Standard: \n");
+    printMatrix(standard, 16, 16);
 
     return 0;
 }

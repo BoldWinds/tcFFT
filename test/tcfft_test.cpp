@@ -1,4 +1,5 @@
 #include "../tcfft.h"
+#include "test.h"
 int *rev, N, N_batch;
 half *in_host, *in_device_0;
 tcfftHandle plan;
@@ -11,7 +12,7 @@ tcfftHandle plan;
  * @param radices   基数
  * @param n_radices 基数数量
 */
-void gen_rev(int N, int rev[], int radices[], int n_radices){
+/*void gen_rev(int N, int rev[], int radices[], int n_radices){
     int *tmp_0 = (int *)malloc(sizeof(int) * N);
     int *tmp_1 = (int *)malloc(sizeof(int) * N);
     int now_N = N;      // e.g 256， 之后在迭代中，会不断除以基数，相当于是对N进行分解
@@ -32,7 +33,7 @@ void gen_rev(int N, int rev[], int radices[], int n_radices){
 #pragma omp parallel for
     for (int i = 0; i < N; ++i)
         rev[i] = tmp_0[i];
-}
+}*/
 
 /**
  * @brief 创建plan，计算索引，分配内存
@@ -44,18 +45,16 @@ void gen_rev(int N, int rev[], int radices[], int n_radices){
 void setup(double *data, int n, int batch){
     N = n;
     N_batch = batch;
-    tcfftPlan1d(&plan, N, N_batch);
-    // 在cpu&内存上生成逆序索引
-    rev = (int *)malloc(sizeof(int) * N);
-    gen_rev(N, rev, plan.radices, plan.n_radices);
-    in_host = (half *)malloc(sizeof(half) * 2 * N * N_batch);
-#pragma omp parallel for
-    for (int j = 0; j < N_batch; ++j){
-        for (int i = 0; i < N; ++i){
-            in_host[2 * N * j + 2 * i + 0] = data[2 * N * j + 2 * rev[i] + 0];
-            in_host[2 * N * j + 2 * i + 1] = data[2 * N * j + 2 * rev[i] + 1];
+    tcfftPlan1d(&plan, N, N_batch, TCFFT_HALF);
+    int index = 0;
+    in_host = (half *)malloc(sizeof(half) * N * 2 * N_batch);
+    for (int i = 0; i < N_batch; i++){
+        for(int j = 0; j < N; j++){
+            index = 2 * j + i * N * 2;
+            in_host[index] = __double2half(data[index]);
+            in_host[index + 1] = __double2half(data[index + 1]);
         }
-    }    
+    }
     cudaMalloc(&in_device_0, sizeof(half) * N * 2 * N_batch);
     cudaMemcpy(in_device_0, in_host, sizeof(half) * N * 2 * N_batch, cudaMemcpyHostToDevice);
 }
@@ -73,7 +72,8 @@ void finalize(double *result){
             result[0 + i * 2 + 2 * N * j] = in_host[2 * i + 0 + 2 * N * j];
             result[1 + i * 2 + 2 * N * j] = in_host[2 * i + 1 + 2 * N * j];
         }
-    }   
+    }
+    tcfftDestroy(plan);
 }
 
 /**
