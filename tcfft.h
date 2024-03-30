@@ -1,3 +1,5 @@
+#ifndef TCFFT_H
+#define TCFFT_H
 #include <cuda_runtime.h>
 #include <mma.h>
 #include <cstdio>
@@ -15,7 +17,7 @@ typedef enum tcfftResult_t {
   TCFFT_SETUP_FAILED   = 0x7,
   TCFFT_INVALID_SIZE   = 0x8,
   TCFFT_NOT_SUPPORTED  = 0x9,
-
+  TCFFT_UNDEFINED      = 0xA,
 } tcfftResult;
 
 typedef enum tcfftPrecision_t {
@@ -29,26 +31,20 @@ struct tcfftHandle{
     int batch;        // 批次数量
     int n_radices;    // 基数数量
     int* radices;
-    //int radices[9] = {16, 16, 16, 16, 16, 16, 16, 16, 16};  // 基数数组
-    int n_mergings;     // 合并数量
+    int n_mergings;
     int* mergings;
-    //int mergings[3] = {0, 0, 0};    // 合并数组
-    //void (*layer_0[3])(half2 *, half *, half *);
-    //void (*layer_1[3])(int, half2 *, half *, half *);
-    void *F_real, *F_imag;                  // 位于device
-    void *F_real_host, *F_imag_host;        // 位于host
+    void *dft_real, *dft_imag;          // 矩阵F
+    void *twiddle_real, *twiddle_imag;  // 矩阵T
 };
 
-tcfftResult tcfftCreate(tcfftHandle *plan);
-
-tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch);
+tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision precision);
 
 tcfftResult tcfftExecB2B(tcfftHandle plan, half *data);
 
-tcfftResult tcfftExecC2C(tcfftHandle plan, half *data);
+tcfftResult tcfftExecC2C(tcfftHandle plan, float *data);
 
 tcfftResult tcfftDestroy(tcfftHandle plan);
 
 // 以下是内核函数的相关定义
-//template <int CONT_SIZE, int NUM_WARP>  // 32 8
-__global__ void layer_256_0(half2 *in, half *F_real, half *F_imag);
+extern "C" void launch_half_256(half* data, tcfftHandle plan);
+#endif

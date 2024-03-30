@@ -19,7 +19,7 @@ using namespace std;
 using namespace nvcuda;
 
 /**
- * @brief 复数矩阵乘法, (A+Bi)(C+Di)
+ * @brief 半精度复数矩阵乘法, (A+Bi)(C+Di)
  * 
  * @param frag_F_real   矩阵A
  * @param frag_F_imag   矩阵B
@@ -50,6 +50,35 @@ __device__ inline void complex_mul_half(
     wmma::mma_sync(frag_out_imag, frag_F_real, frag_in_imag, frag_out_imag);
     // 矩阵B乘矩阵C，结果放入虚矩阵
     wmma::mma_sync(frag_out_imag, frag_F_imag, frag_in_real, frag_out_imag);
+}
+
+/**
+ * @brief 单精度复数矩阵乘法, (A+Bi)(C+Di)
+ * 
+ * @param real_A    矩阵A
+ * @param imag_B    矩阵B
+ * @param real_C    矩阵C
+ * @param imag_D    矩阵D
+ * @param real_out  输出的实数结果矩阵
+ * @param imag_out  输出的虚数结果矩阵
+*/
+__device__ inline void complex_mul_single(
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_A,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_B,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &real_C,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &imag_D,
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> &real_out,
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> &imag_out) {
+    // 赋初值为0
+    wmma::fill_fragment(real_out, 0.0);
+    wmma::fill_fragment(imag_out, 0.0);
+
+    wmma::mma_sync(real_out, imag_B, imag_D, real_out);
+    for (int i = 0; i < real_out.num_elements; i++)
+        real_out.x[i] = -real_out.x[i];
+    wmma::mma_sync(real_out, real_A, real_C, real_out);
+    wmma::mma_sync(imag_out, real_A, imag_D, imag_out);
+    wmma::mma_sync(imag_out, imag_B, real_C, imag_out);
 }
 
 /**
