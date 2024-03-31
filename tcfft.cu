@@ -30,9 +30,14 @@ __global__ void half_256(half *data, half *dft_real, half *dft_imag, half *twidd
     complex_mul_half(frag_dft_real, frag_dft_imag, frag_data_real, frag_data_imag, frag_out_real, frag_out_imag);
 
     // 按元素乘twiddle矩阵
+    double a, b, c, d;
     for (int i = 0; i < frag_out_real.num_elements; i++){
-        frag_out_real.x[i] = frag_out_real.x[i] * frag_twiddle_real.x[i] - frag_out_imag.x[i] * frag_twiddle_imag.x[i];
-        frag_out_imag.x[i] = frag_out_real.x[i] * frag_twiddle_imag.x[i] + frag_out_imag.x[i] * frag_twiddle_real.x[i];
+        a = frag_out_real.x[i] * frag_twiddle_real.x[i];
+        b = frag_out_imag.x[i] * frag_twiddle_imag.x[i];
+        c = frag_out_real.x[i] * frag_twiddle_imag.x[i];
+        d = frag_out_imag.x[i] * frag_twiddle_real.x[i];
+        frag_out_real.x[i] = __double2half(a-b);
+        frag_out_imag.x[i] = __double2half(c+d);
     }
     __syncthreads();
     // 将计算结果转置并重新存储回frag_data
