@@ -1,12 +1,3 @@
-#include <cuda_runtime.h>
-#include <cstdio>
-#include <unistd.h>
-#include <cstring>
-#include <cmath>
-#include <algorithm>
-#include <cufft.h>
-#include <cufftXt.h>
-#include <cuda_fp16.h>
 #include "test.h"
 extern char *optarg;
 extern int optopt;
@@ -25,7 +16,7 @@ double get_error(double *tested, double *standard, int n, int n_batch){
     for (int i = 0; i < n_batch; ++i){
         for (int j = 0; j < n; ++j){
             // 计算实部的误差
-            double tested_e = tested[0 + j * 2 + i * n * 2];
+            double tested_e = tested[2 * j + 2 * i * n];
             double standard_e = standard[0 + j * 2 + i * n * 2];
             error += std::min(1.0, std::abs((tested_e - standard_e) / standard_e));
             // 计算虚部的误差
@@ -36,6 +27,29 @@ double get_error(double *tested, double *standard, int n, int n_batch){
     }
     // 返回平均误差
     return error / n / n_batch / 2;
+}
+
+/**
+ * @brief 使用FFTW库计算标准结果
+ * 
+ * @param data      输入数据指针
+ * @param result    输出结果指针
+ * @param n         单次FFT的长度
+ * @param n_batch   批次数量
+*/
+void fftw3_get_result(double *data, double *result, int n, int n_batch){
+    // 分配输入数组的内存
+    fftw_complex *in = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * n);
+    fftw_plan p = fftw_plan_dft_1d(n, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
+
+    // 循环处理每个批次
+    for (int i = 0; i < n_batch; ++i){
+        memcpy(in, data + 2 * i * n, sizeof(fftw_complex) * n);
+        fftw_execute(p);
+        memcpy(result + 2 * i * n, in, sizeof(fftw_complex) * n);
+    }
+    fftw_destroy_plan(p);
+    fftw_free(in);
 }
 
 /**
@@ -50,64 +64,12 @@ void generate_data(double *data, int n, int batch, int seed = 42){
     srand(seed);
     for (int i = 0; i < batch; ++i){
         for (int j = 0; j < n; ++j){
-            data[0 + j * 2 + i * n * 2] = double(j);
-            data[1 + j * 2 + i * n * 2] = 0.0;
-            //data[0 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            //data[    j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
             //data[1 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            data[    j * 2 + i * n * 2] = double(j);
+            data[1 + j * 2 + i * n * 2] = 0;
         }
     }  
-}
-
-
-/**
- * @brief 用cufft计算标准结果
- * 
- * @param data      输入数据，每个批次包含 2 * n * batch 个double类型数据
- * @param standard  输出数据，每个批次包含 2 * n * batch 个double类型数据
- * @param n         单次FFT的长度
- * @param batch     批次数量
-*/
-void get_standard_result_half(double *data, double *standard, int n, int batch){
-    half* data_host = (half *)malloc(sizeof(half) * n * batch * 2);
-
-    for (int i = 0; i < batch; i++){
-        for (int j = 0; j < n; j++){
-            data_host[j * 2 + i * n * 2] = __float2half(data[j * 2 + i * n * 2]);
-            data_host[j * 2 + 1 + i * n * 2] = __float2half(data[j * 2 + 1 + i * n * 2]);
-        }   
-    }
-
-    half* data_device;
-    cudaMalloc(&data_device, sizeof(half) * n * batch * 2);
-    cudaMemcpy(data_device, data_host, sizeof(half) * n * batch * 2, cudaMemcpyHostToDevice);
-    
-    // 初始化CUFFT
-    cufftHandle plan;
-    cufftCreate(&plan);
-    long long p_n[1] = {n};
-    size_t worksize[1];
-    cufftXtMakePlanMany(plan, 1, p_n,
-                        NULL, 0, 0, CUDA_C_16F,
-                        NULL, 0, 0, CUDA_C_16F, 
-                        batch, worksize, CUDA_C_16F);
-
-    // 执行FFT
-    cufftXtExec(plan, data_device, data_device, CUFFT_FORWARD);
-    cudaDeviceSynchronize();
-
-    // 将结果转移到standard中
-    cudaMemcpy(data_host, data_device, sizeof(half) * n * batch * 2, cudaMemcpyDeviceToHost);
-    for (int i = 0; i < batch; i++){
-        for(int j = 0; j < n; j++){
-            standard[0 + j * 2 + i * n * 2] = __half2float(data_host[(j + i * n) * 2 + 0]);
-            standard[1 + j * 2 + i * n * 2] = __half2float(data_host[(j + i * n) * 2 + 1]);
-        }
-    }
-    
-    // 销毁CUFFT
-    cufftDestroy(plan);
-    cudaFree(data_device);
-    free(data_host);
 }
 
 /**
@@ -122,11 +84,10 @@ void printMatrix(double *data, int m, int n){
         for(int j = 0; j < n; j++){
             printf("%f%+fi, ", data[j * 2 + i * n * 2], data[j * 2 + i * n * 2 + 1]);
         }
-        printf("\n");
+        printf("\n\n");
     }
 }
 
-// 程序入口
 int main(int argc, char *argv[]){
     // 默认参数
     int n = 65536, n_batch = 1, seed = 42;
@@ -156,26 +117,23 @@ int main(int argc, char *argv[]){
     double *data = (double *)malloc(sizeof(double) * n * n_batch * 2);
     generate_data(data, n, n_batch, seed);
 
-    // 使用CUFFT计算标准结果
+    // 使用FFTW计算标准结果
     double *standard = (double *)malloc(sizeof(double) * n * n_batch * 2);
-    get_standard_result_half(data, standard, n, n_batch);
+    fftw3_get_result(data, standard, n, n_batch);
 
     // 使用自定义的FFT实现计算测试结果
     double *tested = (double *)malloc(sizeof(double) * n * n_batch * 2);
-    setup(data, n, n_batch);
-    doit(1);
+    setup(data, n, n_batch, 0);
+     doit(1);
     finalize(tested);
 
     // 计算并打印误差
     printf("%e\n", get_error(tested, standard, n, n_batch));
-    printf("%e\n", get_error(standard, standard, n, n_batch));
 
-    printf("Data: \n");
-    printMatrix(data, 16, 16);
     printf("Test: \n");
     printMatrix(tested, 16, 16);
+    printf("\n\n\n");
     printf("Standard: \n");
     printMatrix(standard, 16, 16);
-
     return 0;
 }

@@ -1,62 +1,97 @@
 #include "../tcfft.h"
 #include "test.h"
-int *rev, N, N_batch;
-half *in_host, *in_device_0;
 tcfftHandle plan;
+void* in_device;
 
 /**
- * @brief           根据基数生成逆序索引，实际上是对每个FFT的输入矩阵进行转置
+ * @brief           转置函数
  * 
- * @param N         数据长度
- * @param rev       逆序索引
- * @param radices   基数
- * @param n_radices 基数数量
+ * @details         递归转置函数，根据基数，对最小的子矩阵进行转置
+ * 
+ * @param n         数据长度
+ * @param trans     转置后的数据
+ * @param radices   转置的维度
+ * @param n_radices 维度数
 */
-/*void gen_rev(int N, int rev[], int radices[], int n_radices){
-    int *tmp_0 = (int *)malloc(sizeof(int) * N);
-    int *tmp_1 = (int *)malloc(sizeof(int) * N);
-    int now_N = N;      // e.g 256， 之后在迭代中，会不断除以基数，相当于是对N进行分解
-#pragma omp parallel for
-    for (int i = 0; i < N; ++i)     tmp_0[i] = i;   // 为tmp_0赋初值，也就是输入数据的原始顺序
-    for (int i = n_radices - 1; i >= 0; --i){   // 对于基数倒序遍历
-#pragma omp parallel for
-        for (int j = 0; j < N; j += now_N){     // 对于每个组
-            for (int k = 0; k < radices[i]; ++k){   
-                for (int l = 0; l < now_N / radices[i]; ++l){
-                    tmp_1[j + l + k * (now_N / radices[i])] = tmp_0[j + l * radices[i] + k];
-                }
+void transpose(int n, int *trans, int *radices, int n_radices){
+    if (n_radices == 2){
+        // 直接进行转置
+        int m = radices[0], n = radices[1];
+        int *tmp = (int *)malloc(sizeof(int) * m * n);
+        for (int i = 0; i < m; i++){
+            for (int j = 0; j < n; j++){
+                tmp[j + n * i] = trans[j + n * i];
             }
         }
-        now_N /= radices[i];
-        std::swap(tmp_0, tmp_1);
+        for (int i = 0; i < n; i++){
+            for (int j = 0; j < m; j++){
+                trans[j + m * i] = tmp[i + n * j];
+            }
+        }
+    }else{
+        int next_n = n / radices[n_radices-1];
+        int step = radices[n_radices-1];
+        for (int i = 0; i < step; i++){
+            transpose(next_n, trans + i * next_n, radices, n_radices - 1);
+        }
     }
-#pragma omp parallel for
-    for (int i = 0; i < N; ++i)
-        rev[i] = tmp_0[i];
-}*/
+}
 
 /**
- * @brief 创建plan，计算索引，分配内存
+ * @brief           创建plan，计算索引，分配内存
  * 
  * @param data      输入数据
  * @param n         数据长度
  * @param n_batch   批次数
+ * @param precision 精度, 1: float, 2: double, other: half
 */
-void setup(double *data, int n, int batch){
-    N = n;
-    N_batch = batch;
-    tcfftPlan1d(&plan, N, N_batch, TCFFT_HALF);
-    int index = 0;
-    in_host = (half *)malloc(sizeof(half) * N * 2 * N_batch);
-    for (int i = 0; i < N_batch; i++){
-        for(int j = 0; j < N; j++){
-            index = 2 * j + i * N * 2;
-            in_host[index] = __double2half(data[index]);
-            in_host[index + 1] = __double2half(data[index + 1]);
+void setup(double *data, int n, int batch, int precision){
+    int *trans = (int *)malloc(sizeof(int) * n);
+    for (int i = 0; i < n; i++) trans[i] = i;
+    switch (precision){
+        case 1:{
+            tcfftPlan1d(&plan, n, batch, TCFFT_SINGLE);
+            transpose(n, trans, plan.radices, plan.n_radices);
+            float* in_host = (float *)malloc(sizeof(float) * n * 2 * batch);
+            for (int j = 0; j < batch; ++j){
+                for (int i = 0; i < n; ++i){
+                    in_host[n * j + i] = data[2 * n * j + 2 * trans[i] + 0];
+                    in_host[n * j + i + n * batch] = data[2 * n * j + 2 * trans[i] + 1];
+                }
+            }
+            cudaMalloc(&in_device, sizeof(float) * n * 2 * batch);
+            cudaMemcpy(in_device, in_host, sizeof(float) * n * 2 * batch, cudaMemcpyHostToDevice);
+            return;
+        }
+        case 2:{
+            tcfftPlan1d(&plan, n, batch, TCFFT_DOUBLE);
+            transpose(n, trans, plan.radices, plan.n_radices);
+            double* in_host = (double *)malloc(sizeof(double) * n * 2 * batch);
+            for (int j = 0; j < batch; ++j){
+                for (int i = 0; i < n; ++i){
+                    in_host[n * j + i] = data[2 * n * j + 2 * trans[i] + 0];
+                    in_host[n * j + i + n * batch] = data[2 * n * j + 2 * trans[i] + 1];
+                }
+            }
+            cudaMalloc(&in_device, sizeof(double) * n * 2 * batch);
+            cudaMemcpy(in_device, in_host, sizeof(double) * n * 2 * batch, cudaMemcpyHostToDevice);
+            return;
+        }
+        default:{
+            tcfftPlan1d(&plan, n, batch, TCFFT_HALF);
+            transpose(n, trans, plan.radices, plan.n_radices);
+            half* in_host = (half *)malloc(sizeof(half) * n * 2 * batch);
+            for (int j = 0; j < batch; ++j){
+                for (int i = 0; i < n; ++i){
+                    in_host[n * j + i] = __double2half(data[2 * n * j + 2 * trans[i] + 0]);
+                    in_host[n * j + i + n * batch] = __double2half(data[2 * n * j + 2 * trans[i] + 1]);
+                }
+            }
+            cudaMalloc(&in_device, sizeof(half) * n * 2 * batch);
+            cudaMemcpy(in_device, in_host, sizeof(half) * n * 2 * batch, cudaMemcpyHostToDevice);
+            return;
         }
     }
-    cudaMalloc(&in_device_0, sizeof(half) * N * 2 * N_batch);
-    cudaMemcpy(in_device_0, in_host, sizeof(half) * N * 2 * N_batch, cudaMemcpyHostToDevice);
 }
 
 /**
@@ -65,13 +100,44 @@ void setup(double *data, int n, int batch){
  * @param result  结果数组
 */
 void finalize(double *result){
-    cudaMemcpy(in_host, in_device_0, sizeof(half) * N * 2 * N_batch, cudaMemcpyDeviceToHost);
-#pragma omp paralllel for
-    for (int j = 0; j < N_batch; ++j){
-        for (int i = 0; i < N; ++i){
-            result[0 + i * 2 + 2 * N * j] = in_host[2 * i + 0 + 2 * N * j];
-            result[1 + i * 2 + 2 * N * j] = in_host[2 * i + 1 + 2 * N * j];
+    int n = plan.nx, batch = plan.batch;
+    switch (plan.precision){
+        case TCFFT_HALF:{
+            half* in_host = (half *)malloc(sizeof(half) * n * 2 * batch);
+            cudaMemcpy(in_host, in_device, sizeof(half) * n * 2 * batch, cudaMemcpyDeviceToHost);
+            for (int j = 0; j < plan.batch; ++j){
+                for (int i = 0; i < plan.nx; ++i){
+                    result[2 * i + 2 * n * j] = in_host[i + n * j];
+                    result[2 * i + 2 * n * j + 1] = in_host[i + n * j + n * batch];
+                }
+            }
+            break;
         }
+        case TCFFT_SINGLE:{
+            float* in_host = (float *)malloc(sizeof(float) * n * 2 * batch);
+            cudaMemcpy(in_host, in_device, sizeof(float) * n * 2 * batch, cudaMemcpyDeviceToHost);
+            for (int j = 0; j < plan.batch; ++j){
+                for (int i = 0; i < plan.nx; ++i){
+                    result[2 * i + 2 * n * j] = in_host[i + n * j];
+                    result[2 * i + 2 * n * j + 1] = in_host[i + n * j + n * batch];
+                }
+            }
+            break;
+        }
+        case TCFFT_DOUBLE:{
+            double* in_host = (double *)malloc(sizeof(double) * n * 2 * batch);
+            cudaMemcpy(in_host, in_device, sizeof(double) * n * 2 * batch, cudaMemcpyDeviceToHost);
+            for (int j = 0; j < plan.batch; ++j){
+                for (int i = 0; i < plan.nx; ++i){
+                    result[2 * i + 2 * n * j] = in_host[i + n * j];
+                    result[2 * i + 2 * n * j + 1] = in_host[i + n * j + n * batch];
+                }
+            }
+            break;
+        }
+        default:
+            printf("error in precision\n");
+            break;
     }
     tcfftDestroy(plan);
 }
@@ -82,8 +148,22 @@ void finalize(double *result){
  * @param iter  执行次数
 */
 void doit(int iter){
-    for (int t = 0; t < iter; ++t){
-        tcfftExecB2B(plan, in_device_0);
+    switch (plan.precision){
+        case TCFFT_HALF:
+            for (int t = 0; t < iter; ++t){
+                tcfftExecB2B(plan, (half *)in_device);
+            }
+            break;
+        case TCFFT_SINGLE:
+            for (int t = 0; t < iter; ++t){
+                tcfftExecC2C(plan, (float *)in_device);
+            }
+            break;
+        case TCFFT_DOUBLE:
+            break;
+        default:
+            printf("error in precision\n");
+            break;
     }
     cudaDeviceSynchronize();
 }

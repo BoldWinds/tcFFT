@@ -33,6 +33,7 @@ struct tcfftHandle{
     int* radices;
     int n_mergings;
     int* mergings;
+    tcfftPrecision precision;
     void *dft_real, *dft_imag;          // 矩阵F
     void *twiddle_real, *twiddle_imag;  // 矩阵T
 };
