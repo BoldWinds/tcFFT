@@ -4,11 +4,11 @@ extern int optopt;
 
 int main(int argc, char *argv[]){
     // 默认参数
-    int n = 65536, n_batch = 1, seed = 42;
+    int n = 65536, n_batch = 1, seed = 42, times = 1, precision = 0;
     char opt_c = 0;
 
     // 解析命令行参数
-    while (EOF != (opt_c = getopt(argc, argv, "n:b:s:"))){
+    while (EOF != (opt_c = getopt(argc, argv, "n:b:s:p:t:"))){
         switch (opt_c){
         case 'n':   // 设置FFT大小
             n = atoi(optarg);
@@ -18,6 +18,12 @@ int main(int argc, char *argv[]){
             break;
         case 's':   // 设置随机种子
             seed = atoi(optarg);
+            break;
+        case 'p':   // 设置随机种子
+            precision = atoi(optarg);
+            break;
+        case 't':   // 设置随机种子
+            times = atoi(optarg);
             break;
         case '?':   // 未知选项
             printf("unknown option %c\n", optopt);
@@ -37,12 +43,12 @@ int main(int argc, char *argv[]){
 
     // 使用CUFFT计算结果
     double *cu = (double *)malloc(sizeof(double) * n * n_batch * 2);
-    cufft_get_result(data, cu, n, n_batch, 0, 1);
+    cufft_get_result(data, cu, n, n_batch, precision, times);
 
     // 使用自定义的FFT实现计算测试结果
     double *tested = (double *)malloc(sizeof(double) * n * n_batch * 2);
-    setup(data, n, n_batch, 0);
-    doit(1);
+    setup(data, n, n_batch, precision);
+    doit(times);
     finalize(tested);
 
     // 计算并打印误差
