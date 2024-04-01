@@ -8,7 +8,7 @@ endif
 
 all : build/$(OBJ)
 
-build/accuracy : ./test/accuracy.cpp ./test/tcfft_test.cpp tcfft.cpp tcfft.cu
+build/accuracy : ./test/accuracy.cpp ./test/test_utils.cpp ./test/tcfft_test.cpp tcfft.cpp tcfft.cu
 	nvcc $^ -o $@ $(FLAGS)
 
 .PHONY : clean

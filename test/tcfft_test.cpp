@@ -148,6 +148,7 @@ void finalize(double *result){
  * @param iter  执行次数
 */
 void doit(int iter){
+    auto start = std::chrono::high_resolution_clock::now();
     switch (plan.precision){
         case TCFFT_HALF:
             for (int t = 0; t < iter; ++t){
@@ -166,4 +167,7 @@ void doit(int iter){
             break;
     }
     cudaDeviceSynchronize();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    printf("TCFFT use time: %lf ms\n", duration.count());
 }
