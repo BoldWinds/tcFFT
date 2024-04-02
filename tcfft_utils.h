@@ -55,6 +55,8 @@ __device__ inline void complex_mul_half(
 /**
  * @brief 单精度复数矩阵乘法, (A+Bi)(C+Di)
  * 
+ * @details 由于wmma对单精度矩阵乘法的大小支持是16 16 8，所以使用4个矩阵乘法来完成一次16*16的矩阵乘法
+ * 
  * @param real_A    矩阵A
  * @param imag_B    矩阵B
  * @param real_C    矩阵C
@@ -63,23 +65,40 @@ __device__ inline void complex_mul_half(
  * @param imag_out  输出的虚数结果矩阵
 */
 __device__ inline void complex_mul_single(
-    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_A,
-    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_B,
-    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &real_C,
-    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &imag_D,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_A1,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_A2,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_B1,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_B2,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &real_C1,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &real_C2,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &imag_D1,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> &imag_D2,
     wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> &real_out,
     wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> &imag_out) {
     // 赋初值为0
     wmma::fill_fragment(real_out, 0.0);
     wmma::fill_fragment(imag_out, 0.0);
 
-    wmma::mma_sync(real_out, imag_B, imag_D, real_out);
+    wmma::mma_sync(real_out, imag_B1, imag_D1, real_out);
+    wmma::mma_sync(real_out, imag_B1, imag_D2, real_out);
+    wmma::mma_sync(real_out, imag_B2, imag_D1, real_out);
+    wmma::mma_sync(real_out, imag_B2, imag_D2, real_out);
     for (int i = 0; i < real_out.num_elements; i++)
         real_out.x[i] = -real_out.x[i];
-    wmma::mma_sync(real_out, real_A, real_C, real_out);
-    wmma::mma_sync(imag_out, real_A, imag_D, imag_out);
-    wmma::mma_sync(imag_out, imag_B, real_C, imag_out);
+    wmma::mma_sync(real_out, real_A1, real_C1, real_out);
+    wmma::mma_sync(real_out, real_A1, real_C2, real_out);
+    wmma::mma_sync(real_out, real_A2, real_C1, real_out);
+    wmma::mma_sync(real_out, real_A2, real_C2, real_out);
+    wmma::mma_sync(imag_out, real_A1, imag_D1, imag_out);
+    wmma::mma_sync(imag_out, real_A1, imag_D2, imag_out);
+    wmma::mma_sync(imag_out, real_A2, imag_D1, imag_out);
+    wmma::mma_sync(imag_out, real_A2, imag_D2, imag_out);
+    wmma::mma_sync(imag_out, imag_B1, real_C1, imag_out);
+    wmma::mma_sync(imag_out, imag_B1, real_C2, imag_out);
+    wmma::mma_sync(imag_out, imag_B2, real_C1, imag_out);
+    wmma::mma_sync(imag_out, imag_B2, real_C2, imag_out);
 }
+
 
 /**
  * @brief 计算半精度旋转因子

@@ -26,10 +26,24 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
         switch (nx){
         case 256:
             plan->n_radices = 2;
-            plan->radices = new int[2]{16, 16};
+            plan->radices = new int[plan->n_radices]{16, 16};
+            plan->n_mergings = 0;
+            break;
+        case 512:
+            plan->n_radices = 3;
+            plan->radices = new int[plan->n_radices]{16, 16, 2};
             plan->n_mergings = 1;
             plan->mergings = new int[1]{0};
-            break;
+        case 1024:
+            plan->n_radices = 3;
+            plan->radices = new int[plan->n_radices]{16, 16, 4};
+            plan->n_mergings = 1;
+            plan->mergings = new int[1]{0};
+        case 256*256:
+            plan->n_radices = 4;
+            plan->radices = new int[plan->n_radices]{16, 16, 16, 16};
+            plan->n_mergings = 1;
+            plan->mergings = new int[1]{0};
         default:
             return TCFFT_NOT_SUPPORTED;
         }
@@ -63,8 +77,42 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
         free(imag_tmp);
         break;
     }
-    case TCFFT_SINGLE:
+    case TCFFT_SINGLE:{
+        switch (nx){
+            case 256:
+                plan->n_radices = 2;
+                plan->radices = new int[plan->n_radices]{16, 16};
+                plan->n_mergings = 0;
+                break;
+            default:
+                return TCFFT_NOT_SUPPORTED;
+        }
+        float* tmp = (float *)malloc(sizeof(float) * 512);
+        for (int i = 0; i < 16; ++i){
+            for (int j = 0; j < 16; ++j){
+                tmp[16 * i + j] = cosf(2 * M_PI * i * j / 16);
+                tmp[16 * i + j + 256] = -sinf(2 * M_PI * i * j / 16);
+            }
+        }
+        // 将旋转因子存入dft
+        if (cudaMalloc(&plan->dft, sizeof(float) * 512) != cudaSuccess){
+            return TCFFT_ALLOC_FAILED;
+        }
+        cudaMemcpy(plan->dft, tmp, sizeof(float) * 512, cudaMemcpyHostToDevice);
+        // 分配twiddle矩阵
+        if (cudaMalloc(&plan->twiddle, sizeof(float) * 512) != cudaSuccess){
+            return TCFFT_ALLOC_FAILED;
+        }
+        for (int i = 0; i < 16; ++i){
+            for (int j = 0; j < 16; ++j){
+                tmp[16 * i + j] = cosf(2 * M_PI * i * j / 256);
+                tmp[16 * i + j + 256] = -sinf(2 * M_PI * i * j / 256);
+            }
+        }
+        cudaMemcpy(plan->twiddle, tmp, sizeof(float) * 512, cudaMemcpyHostToDevice);
+        free(tmp);
         break;
+    }
     case TCFFT_DOUBLE:
         break;
     default:
@@ -85,6 +133,7 @@ tcfftResult tcfftExecB2B(tcfftHandle plan, half *data){
  * @brief 执行单精度一维FFT
 */
 tcfftResult tcfftExecC2C(tcfftHandle plan, float *data){
+    launch_single_256(data, plan);
     return TCFFT_SUCCESS;
 }
 
