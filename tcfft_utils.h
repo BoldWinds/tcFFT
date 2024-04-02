@@ -80,22 +80,13 @@ __device__ inline void complex_mul_single(
     wmma::fill_fragment(imag_out, 0.0);
 
     wmma::mma_sync(real_out, imag_B1, imag_D1, real_out);
-    wmma::mma_sync(real_out, imag_B1, imag_D2, real_out);
-    wmma::mma_sync(real_out, imag_B2, imag_D1, real_out);
     wmma::mma_sync(real_out, imag_B2, imag_D2, real_out);
-    for (int i = 0; i < real_out.num_elements; i++)
-        real_out.x[i] = -real_out.x[i];
+    for (int i = 0; i < real_out.num_elements; i++) real_out.x[i] = -real_out.x[i];
     wmma::mma_sync(real_out, real_A1, real_C1, real_out);
-    wmma::mma_sync(real_out, real_A1, real_C2, real_out);
-    wmma::mma_sync(real_out, real_A2, real_C1, real_out);
     wmma::mma_sync(real_out, real_A2, real_C2, real_out);
     wmma::mma_sync(imag_out, real_A1, imag_D1, imag_out);
-    wmma::mma_sync(imag_out, real_A1, imag_D2, imag_out);
-    wmma::mma_sync(imag_out, real_A2, imag_D1, imag_out);
     wmma::mma_sync(imag_out, real_A2, imag_D2, imag_out);
     wmma::mma_sync(imag_out, imag_B1, real_C1, imag_out);
-    wmma::mma_sync(imag_out, imag_B1, real_C2, imag_out);
-    wmma::mma_sync(imag_out, imag_B2, real_C1, imag_out);
     wmma::mma_sync(imag_out, imag_B2, real_C2, imag_out);
 }
 

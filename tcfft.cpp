@@ -47,34 +47,30 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
         default:
             return TCFFT_NOT_SUPPORTED;
         }
-        half* real_tmp = (half *)malloc(sizeof(half) * 256);
-        half* imag_tmp = (half *)malloc(sizeof(half) * 256);
+        half* tmp = (half *)malloc(sizeof(half) * 512);
         for (int i = 0; i < 16; ++i){
             for (int j = 0; j < 16; ++j){
-                real_tmp[16 * i + j] = __float2half(cosf(2 * M_PI * i * j / 16));
-                imag_tmp[16 * i + j] = __float2half(-sinf(2 * M_PI * i * j / 16));
+                tmp[16 * i + j] = __float2half(cosf(2 * M_PI * i * j / 16));
+                tmp[16 * i + j + 256] = __float2half(-sinf(2 * M_PI * i * j / 16));
             }
         }
         // 将旋转因子存入F_real和F_imag
-        if (cudaMalloc(&plan->dft_real, sizeof(half) * 256) != cudaSuccess || cudaMalloc(&plan->dft_imag, sizeof(half) * 256) != cudaSuccess){
+        if (cudaMalloc(&plan->dft, sizeof(half) * 512) != cudaSuccess){
             return TCFFT_ALLOC_FAILED;
         }
-        cudaMemcpy(plan->dft_real, real_tmp, sizeof(half) * 256, cudaMemcpyHostToDevice);
-        cudaMemcpy(plan->dft_imag, imag_tmp, sizeof(half) * 256, cudaMemcpyHostToDevice);
+        cudaMemcpy(plan->dft, tmp, sizeof(half) * 512, cudaMemcpyHostToDevice);
         // 分配twiddle矩阵
-        if (cudaMalloc(&plan->twiddle_real, sizeof(half) * 256) != cudaSuccess || cudaMalloc(&plan->twiddle_imag, sizeof(half) * 256) != cudaSuccess){
+        if (cudaMalloc(&plan->twiddle, sizeof(half) * 512) != cudaSuccess){
             return TCFFT_ALLOC_FAILED;
         }
         for (int i = 0; i < 16; ++i){
             for (int j = 0; j < 16; ++j){
-                real_tmp[16 * i + j] = __float2half(cosf(2 * M_PI * i * j / 256));
-                imag_tmp[16 * i + j] = __float2half(-sinf(2 * M_PI * i * j / 256));
+                tmp[16 * i + j] = __float2half(cosf(2 * M_PI * i * j / 256));
+                tmp[16 * i + j + 256] = __float2half(-sinf(2 * M_PI * i * j / 256));
             }
         }
-        cudaMemcpy(plan->twiddle_real, real_tmp, sizeof(half) * 256, cudaMemcpyHostToDevice);
-        cudaMemcpy(plan->twiddle_imag, imag_tmp, sizeof(half) * 256, cudaMemcpyHostToDevice);
-        free(real_tmp);
-        free(imag_tmp);
+        cudaMemcpy(plan->twiddle, tmp, sizeof(half) * 512, cudaMemcpyHostToDevice);
+        free(tmp);
         break;
     }
     case TCFFT_SINGLE:{
@@ -138,10 +134,8 @@ tcfftResult tcfftExecC2C(tcfftHandle plan, float *data){
 }
 
 tcfftResult tcfftDestroy(tcfftHandle plan){
-    cudaFree(plan.dft_real);
-    cudaFree(plan.dft_imag);
-    cudaFree(plan.twiddle_real);
-    cudaFree(plan.twiddle_imag);
+    cudaFree(plan.dft);
+    cudaFree(plan.twiddle);
     free(plan.radices);
     free(plan.mergings);
     return TCFFT_SUCCESS;
