@@ -2,6 +2,8 @@
 #include "tcfft_utils.h"
 using namespace nvcuda;
 
+__device__ void single_merge_2(float *data_out, float* data_in, int len);
+
 __global__ void half_256(half *data, half *dft, half *twiddle) {
     extern __shared__ half smem_in[];
 
@@ -118,6 +120,126 @@ __global__ void single_256(float *data, float *dft, float *twiddle) {
     wmma::store_matrix_sync(data + warp_start + 256, frag_out_imag, 16, wmma::mem_row_major);
 }
 
+__global__ void single_512(float *data, float *dft, float *twiddle) {
+    extern __shared__ float smem[];
+
+    // 加载dft矩阵
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_real_1;
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_real_2;
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_imag_1;
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_imag_2;
+    wmma::load_matrix_sync(frag_dft_real_1, dft, 16);
+    wmma::load_matrix_sync(frag_dft_real_2, dft + 8, 16);
+    wmma::load_matrix_sync(frag_dft_imag_1, dft + 256, 16);
+    wmma::load_matrix_sync(frag_dft_imag_2, dft + 264, 16);
+    // 加载twiddle矩阵
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> frag_twiddle_real;
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> frag_twiddle_imag;
+    wmma::load_matrix_sync(frag_twiddle_real, twiddle, 16, wmma::mem_row_major);
+    wmma::load_matrix_sync(frag_twiddle_imag, twiddle + 256, 16, wmma::mem_row_major);
+    // 定义输入输出矩阵
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> frag_data_real_1;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> frag_data_real_2;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> frag_data_imag_1;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::col_major> frag_data_imag_2;
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> frag_out_real;
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> frag_out_imag;
+
+    // 读出指定位置的矩阵
+    int warp_start = 0;
+
+    for (int i = 0; i < 2; i++)
+    {
+        wmma::load_matrix_sync(frag_data_real_1, data + warp_start, 16);
+        wmma::load_matrix_sync(frag_data_real_2, data + warp_start + 8, 16);
+        wmma::load_matrix_sync(frag_data_imag_1, data + warp_start + 512, 16);
+        wmma::load_matrix_sync(frag_data_imag_2, data + warp_start + 520, 16);
+
+        // 计算子序列的DFT结果矩阵
+        complex_mul_single(frag_dft_real_1, frag_dft_real_2, frag_dft_imag_1, frag_dft_imag_2, frag_data_real_1, frag_data_real_2, frag_data_imag_1, frag_data_imag_2, frag_out_real, frag_out_imag);
+
+        // 按元素乘twiddle矩阵
+        double a, b, c, d;
+        for (int i = 0; i < frag_out_real.num_elements; i++){
+            a = frag_out_real.x[i] * frag_twiddle_real.x[i];
+            b = frag_out_imag.x[i] * frag_twiddle_imag.x[i];
+            c = frag_out_real.x[i] * frag_twiddle_imag.x[i];
+            d = frag_out_imag.x[i] * frag_twiddle_real.x[i];
+            frag_out_real.x[i] = float(a - b);
+            frag_out_imag.x[i] = float(c + d);
+        }
+        __syncthreads();
+        // 将计算结果转置并重新存储回frag_data
+        wmma::store_matrix_sync(smem + warp_start, frag_out_real, 16, wmma::mem_row_major);
+        wmma::store_matrix_sync(smem + warp_start + 512, frag_out_imag, 16, wmma::mem_row_major);
+        wmma::load_matrix_sync(frag_data_real_1, smem + warp_start, 16);
+        wmma::load_matrix_sync(frag_data_real_2, smem + warp_start + 8, 16);
+        wmma::load_matrix_sync(frag_data_imag_1, smem + warp_start + 512, 16);
+        wmma::load_matrix_sync(frag_data_imag_2, smem + warp_start + 520, 16);
+
+        // 重新计算
+        complex_mul_single(frag_dft_real_1, frag_dft_real_2, frag_dft_imag_1, frag_dft_imag_2, frag_data_real_1, frag_data_real_2, frag_data_imag_1, frag_data_imag_2, frag_out_real, frag_out_imag);
+
+        // 把结果存储到共享内存
+        wmma::store_matrix_sync(smem + warp_start, frag_out_real, 16, wmma::mem_row_major);
+        wmma::store_matrix_sync(smem + warp_start + 512, frag_out_imag, 16, wmma::mem_row_major);
+        //wmma::store_matrix_sync(data + warp_start, frag_out_real, 16, wmma::mem_row_major);
+        //wmma::store_matrix_sync(data + warp_start + 512, frag_out_imag, 16, wmma::mem_row_major);
+        warp_start += 256;
+    }
+    // 将数据存储回去
+    single_merge_2(data, smem, 256);  
+}
+
+/**
+ * @brief       单精度的两个FFT合并过程
+ * 
+ * @details     参与计算的两个FFT长度应均为len，后续也许可以修改
+ * 
+ * @param data_out
+ * @param data_in
+ * @param len
+*/
+__device__ void single_merge_2(float *data_out, float* data_in, int len){
+    // 第一步，做按元素乘法，注意第一行和第一列可以跳过计算（乘1）
+    int tid = threadIdx.x;
+    int stride = len / 32;
+
+
+    // 四个指针，分别指向第一个FFT和第二个FFT的实部和虚部
+    float *real_1 = data_in;
+    float *real_2 = data_in + len;
+    float *imag_1 = data_in + 2*len;
+    float *imag_2 = data_in + 3*len;
+
+    
+    // 只有两个，然而第一个不需要计算（W全是1）
+    double a,b,c,d,real_w,imag_w;
+    for (int i = 0; i < stride; i++)
+    {
+        real_w = cos(2 * M_PI * (tid * stride + i) / (2*len));
+        imag_w = sin(-2 * M_PI * (tid * stride + i) / (2*len));
+        a = real_2[tid * stride + i] * real_w;
+        b = imag_2[tid * stride + i] * imag_w;
+        c = real_2[tid * stride + i] * imag_w;
+        d = imag_2[tid * stride + i] * real_w;
+        real_2[tid * stride + + i] = a - b;
+        imag_2[tid * stride + i] = c + d;
+    }
+    
+    // 第二步，矩阵F2乘第一步的结果，利用F2的性质对矩阵乘法进行化简；每个warp中的thread，负责处理两个FFT的各8个元素
+    for (int i = 0; i < stride; i++)
+    {
+        // 设目前正在处理乘法右侧矩阵的第k列
+        // F2第一行(1,1)乘第k列
+        data_out[0 + tid*stride + i] = real_1[tid*stride + i] + real_2[tid*stride + i];
+        data_out[2*len + tid*stride + i] = imag_1[tid*stride + i] + imag_2[tid*stride + i];
+        // F2第二行(1,-1)乘第k列
+        data_out[len + tid*stride + i] = real_1[tid*stride + i] - real_2[tid*stride + i];
+        data_out[3*len + tid*stride + i] = imag_1[tid*stride + i] - imag_2[tid*stride + i];
+    }
+}
+
 extern "C" void launch_half_256(half* data, tcfftHandle plan) {
     // 调用CUDA核心 
     half_256<<<1, 32, sizeof(half) * plan.nx * 2 * plan.batch>>>(data, (half *)plan.dft, (half *)plan.twiddle);
@@ -126,4 +248,9 @@ extern "C" void launch_half_256(half* data, tcfftHandle plan) {
 extern "C" void launch_single_256(float* data, tcfftHandle plan) {
     // 调用CUDA核心 
     single_256<<<1, 32, sizeof(float)*plan.nx*2*plan.batch>>>(data, (float *)plan.dft, (float *)plan.twiddle);
+}
+
+extern "C" void launch_single_512(float* data, tcfftHandle plan) {
+    // 调用CUDA核心 
+    single_512<<<1, 32, sizeof(float)*plan.nx*2*plan.batch>>>(data, (float *)plan.dft, (float *)plan.twiddle);
 }

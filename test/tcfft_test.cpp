@@ -6,33 +6,42 @@ void* in_device;
 /**
  * @brief           转置函数
  * 
- * @details         递归转置函数，根据基数，对最小的子矩阵进行转置
+ * @param trans     转置矩阵指针
+ * @param row       行数
+ * @param col       列数
+*/
+void transpose(int *trans, int row, int col){
+    int *tmp = (int *)malloc(sizeof(int) * row * col);
+    for (int i = 0; i < row; i++){
+        for (int j = 0; j < col; j++){
+            tmp[j + col * i] = trans[j + col * i];
+        }
+    }
+    for (int i = 0; i < col; i++){
+        for (int j = 0; j < row; j++){
+            trans[j + row * i] = tmp[i + col * j];
+        }
+    }
+    free(tmp);
+}
+
+/**
+ * @brief           数据重排列函数
  * 
  * @param n         数据长度
- * @param trans     转置后的数据
- * @param radices   转置的维度
- * @param n_radices 维度数
+ * @param data     要处理的数据
+ * @param radices   分解的基数
+ * @param n_radices 基数数量
 */
-void transpose(int n, int *trans, int *radices, int n_radices){
+void reposition(int n, int *data, int *radices, int n_radices){
     if (n_radices == 2){
-        // 直接进行转置
-        int m = radices[0], n = radices[1];
-        int *tmp = (int *)malloc(sizeof(int) * m * n);
-        for (int i = 0; i < m; i++){
-            for (int j = 0; j < n; j++){
-                tmp[j + n * i] = trans[j + n * i];
-            }
-        }
-        for (int i = 0; i < n; i++){
-            for (int j = 0; j < m; j++){
-                trans[j + m * i] = tmp[i + n * j];
-            }
-        }
+        transpose(data, radices[1], radices[0]);
     }else{
-        int next_n = n / radices[n_radices-1];
-        int step = radices[n_radices-1];
-        for (int i = 0; i < step; i++){
-            transpose(next_n, trans + i * next_n, radices, n_radices - 1);
+        int row = radices[n_radices - 1];
+        int col = n / radices[n_radices - 1];
+        transpose(data, col, row);
+        for (int i = 0; i < row; i++){
+            reposition(col, data + i * col, radices, n_radices - 1);
         }
     }
 }
@@ -51,8 +60,8 @@ void setup(double *data, int n, int batch, int precision){
     switch (precision){
         case 1:{
             tcfftPlan1d(&plan, n, batch, TCFFT_SINGLE);
-            transpose(n, trans, plan.radices, plan.n_radices);
-            float* in_host = (float *)malloc(sizeof(float) * n * 2 * batch);
+            reposition(n, trans, plan.radices, plan.n_radices);
+            float* in_host = (float *)malloc(sizeof(float) * n * 2 * batch);            
             for (int j = 0; j < batch; ++j){
                 for (int i = 0; i < n; ++i){
                     in_host[n * j + i] = data[2 * n * j + 2 * trans[i] + 0];
@@ -65,7 +74,7 @@ void setup(double *data, int n, int batch, int precision){
         }
         case 2:{
             tcfftPlan1d(&plan, n, batch, TCFFT_DOUBLE);
-            transpose(n, trans, plan.radices, plan.n_radices);
+            reposition(n, trans, plan.radices, plan.n_radices);
             double* in_host = (double *)malloc(sizeof(double) * n * 2 * batch);
             for (int j = 0; j < batch; ++j){
                 for (int i = 0; i < n; ++i){
@@ -79,7 +88,7 @@ void setup(double *data, int n, int batch, int precision){
         }
         default:{
             tcfftPlan1d(&plan, n, batch, TCFFT_HALF);
-            transpose(n, trans, plan.radices, plan.n_radices);
+            reposition(n, trans, plan.radices, plan.n_radices);
             half* in_host = (half *)malloc(sizeof(half) * n * 2 * batch);
             for (int j = 0; j < batch; ++j){
                 for (int i = 0; i < n; ++i){

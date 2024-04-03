@@ -49,4 +49,5 @@ tcfftResult tcfftDestroy(tcfftHandle plan);
 // 以下是内核函数的相关定义
 extern "C" void launch_half_256(half* data, tcfftHandle plan);
 extern "C" void launch_single_256(float* data, tcfftHandle plan);
+extern "C" void launch_single_512(float* data, tcfftHandle plan);
 #endif

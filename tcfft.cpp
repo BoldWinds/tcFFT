@@ -80,6 +80,11 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
                 plan->radices = new int[plan->n_radices]{16, 16};
                 plan->n_mergings = 0;
                 break;
+            case 512:
+                plan->n_radices = 3;
+                plan->radices = new int[plan->n_radices]{16, 16, 2};
+                plan->n_mergings = 0;
+                break;
             default:
                 return TCFFT_NOT_SUPPORTED;
         }
@@ -129,7 +134,17 @@ tcfftResult tcfftExecB2B(tcfftHandle plan, half *data){
  * @brief 执行单精度一维FFT
 */
 tcfftResult tcfftExecC2C(tcfftHandle plan, float *data){
-    launch_single_256(data, plan);
+    switch (plan.nx)
+    {
+    case 256:
+        launch_single_256(data, plan);
+        break;
+    case 512:
+        launch_single_512(data, plan);
+        break;
+    default:
+        return TCFFT_NOT_SUPPORTED;
+    }
     return TCFFT_SUCCESS;
 }
 

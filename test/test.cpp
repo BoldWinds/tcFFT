@@ -58,9 +58,9 @@ int main(int argc, char *argv[]){
     printf("%e\n", get_error(tested, standard, n, n_batch));
 
     /*printf("Test: \n");
-    printMatrix(tested, 16, 16);
+    printMatrix(tested, 2, 256);
     printf("\n\n\n");
     printf("Standard: \n");
-    printMatrix(standard, 16, 16)*/;
+    printMatrix(standard, 2, 256);*/
     return 0;
 }
