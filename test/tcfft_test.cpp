@@ -1,7 +1,7 @@
 #include "../tcfft.h"
 #include "test.h"
 tcfftHandle plan;
-void* in_device;
+void* in_device, *result_device;
 
 /**
  * @brief           转置函数
@@ -69,6 +69,7 @@ void setup(double *data, int n, int batch, int precision){
                 }
             }
             cudaMalloc(&in_device, sizeof(float) * n * 2 * batch);
+            cudaMalloc(&result_device, sizeof(float) * n * 2 * batch);
             cudaMemcpy(in_device, in_host, sizeof(float) * n * 2 * batch, cudaMemcpyHostToDevice);
             return;
         }
@@ -83,6 +84,7 @@ void setup(double *data, int n, int batch, int precision){
                 }
             }
             cudaMalloc(&in_device, sizeof(double) * n * 2 * batch);
+            cudaMalloc(&result_device, sizeof(double) * n * 2 * batch);
             cudaMemcpy(in_device, in_host, sizeof(double) * n * 2 * batch, cudaMemcpyHostToDevice);
             return;
         }
@@ -97,6 +99,7 @@ void setup(double *data, int n, int batch, int precision){
                 }
             }
             cudaMalloc(&in_device, sizeof(half) * n * 2 * batch);
+            cudaMalloc(&result_device, sizeof(half) * n * 2 * batch);
             cudaMemcpy(in_device, in_host, sizeof(half) * n * 2 * batch, cudaMemcpyHostToDevice);
             return;
         }
@@ -113,7 +116,7 @@ void finalize(double *result){
     switch (plan.precision){
         case TCFFT_HALF:{
             half* in_host = (half *)malloc(sizeof(half) * n * 2 * batch);
-            cudaMemcpy(in_host, in_device, sizeof(half) * n * 2 * batch, cudaMemcpyDeviceToHost);
+            cudaMemcpy(in_host, result_device, sizeof(half) * n * 2 * batch, cudaMemcpyDeviceToHost);
             for (int j = 0; j < plan.batch; ++j){
                 for (int i = 0; i < plan.nx; ++i){
                     result[2 * i + 2 * n * j] = in_host[i + n * j];
@@ -124,7 +127,7 @@ void finalize(double *result){
         }
         case TCFFT_SINGLE:{
             float* in_host = (float *)malloc(sizeof(float) * n * 2 * batch);
-            cudaMemcpy(in_host, in_device, sizeof(float) * n * 2 * batch, cudaMemcpyDeviceToHost);
+            cudaMemcpy(in_host, result_device, sizeof(float) * n * 2 * batch, cudaMemcpyDeviceToHost);
             for (int j = 0; j < plan.batch; ++j){
                 for (int i = 0; i < plan.nx; ++i){
                     result[2 * i + 2 * n * j] = in_host[i + n * j];
@@ -135,7 +138,7 @@ void finalize(double *result){
         }
         case TCFFT_DOUBLE:{
             double* in_host = (double *)malloc(sizeof(double) * n * 2 * batch);
-            cudaMemcpy(in_host, in_device, sizeof(double) * n * 2 * batch, cudaMemcpyDeviceToHost);
+            cudaMemcpy(in_host, result_device, sizeof(double) * n * 2 * batch, cudaMemcpyDeviceToHost);
             for (int j = 0; j < plan.batch; ++j){
                 for (int i = 0; i < plan.nx; ++i){
                     result[2 * i + 2 * n * j] = in_host[i + n * j];
@@ -161,12 +164,12 @@ void doit(int iter){
     switch (plan.precision){
         case TCFFT_HALF:
             for (int t = 0; t < iter; ++t){
-                tcfftExecB2B(plan, (half *)in_device);
+                tcfftExecB2B(plan, (half *)in_device, (half*) result_device);
             }
             break;
         case TCFFT_SINGLE:
             for (int t = 0; t < iter; ++t){
-                tcfftExecC2C(plan, (float *)in_device);
+                tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
             }
             break;
         case TCFFT_DOUBLE:

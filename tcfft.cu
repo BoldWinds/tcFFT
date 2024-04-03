@@ -4,7 +4,7 @@ using namespace nvcuda;
 
 __device__ void single_merge_2(float *data_out, float* data_in, int len);
 
-__global__ void half_256(half *data, half *dft, half *twiddle) {
+__global__ void half_256(half *data, half *result, half *dft, half *twiddle) {
     extern __shared__ half smem_in[];
 
     // 加载dft矩阵
@@ -52,12 +52,12 @@ __global__ void half_256(half *data, half *dft, half *twiddle) {
     complex_mul_half(frag_dft_real, frag_dft_imag, frag_data_real, frag_data_imag,  frag_out_real, frag_out_imag);
 
     // 将数据存储回去
-    wmma::store_matrix_sync(data + warp_start, frag_out_real, 16, wmma::mem_row_major);
-    wmma::store_matrix_sync(data + warp_start + 256, frag_out_imag, 16, wmma::mem_row_major);
+    wmma::store_matrix_sync(result + warp_start, frag_out_real, 16, wmma::mem_row_major);
+    wmma::store_matrix_sync(result + warp_start + 256, frag_out_imag, 16, wmma::mem_row_major);
     
 }
 
-__global__ void single_256(float *data, float *dft, float *twiddle) {
+__global__ void single_256(float *data, float* result,float *dft, float *twiddle) {
     extern __shared__ float smem[];
 
     // 加载dft矩阵
@@ -116,11 +116,11 @@ __global__ void single_256(float *data, float *dft, float *twiddle) {
     complex_mul_single(frag_dft_real_1, frag_dft_real_2, frag_dft_imag_1, frag_dft_imag_2, frag_data_real_1, frag_data_real_2, frag_data_imag_1, frag_data_imag_2, frag_out_real, frag_out_imag);
 
     // 将数据存储回去
-    wmma::store_matrix_sync(data + warp_start, frag_out_real, 16, wmma::mem_row_major);
-    wmma::store_matrix_sync(data + warp_start + 256, frag_out_imag, 16, wmma::mem_row_major);
+    wmma::store_matrix_sync(result + warp_start, frag_out_real, 16, wmma::mem_row_major);
+    wmma::store_matrix_sync(result + warp_start + 256, frag_out_imag, 16, wmma::mem_row_major);
 }
 
-__global__ void single_512(float *data, float *dft, float *twiddle) {
+__global__ void single_512(float *data, float* result, float *dft, float *twiddle) {
     extern __shared__ float smem[];
 
     // 加载dft矩阵
@@ -183,12 +183,16 @@ __global__ void single_512(float *data, float *dft, float *twiddle) {
         // 把结果存储到共享内存
         wmma::store_matrix_sync(smem + warp_start, frag_out_real, 16, wmma::mem_row_major);
         wmma::store_matrix_sync(smem + warp_start + 512, frag_out_imag, 16, wmma::mem_row_major);
-        //wmma::store_matrix_sync(data + warp_start, frag_out_real, 16, wmma::mem_row_major);
-        //wmma::store_matrix_sync(data + warp_start + 512, frag_out_imag, 16, wmma::mem_row_major);
         warp_start += 256;
     }
     // 将数据存储回去
-    single_merge_2(data, smem, 256);  
+    single_merge_2(result, smem, 256);  
+}
+
+__global__ void single_merge_256(float *data_out, float* data_in, int len){
+    // 第一步，做按元素乘法，注意第一行和第一列可以跳过计算（乘1）
+    int tid = threadIdx.x;
+    int stride = len / 32;
 }
 
 /**
@@ -205,15 +209,13 @@ __device__ void single_merge_2(float *data_out, float* data_in, int len){
     int tid = threadIdx.x;
     int stride = len / 32;
 
-
     // 四个指针，分别指向第一个FFT和第二个FFT的实部和虚部
     float *real_1 = data_in;
     float *real_2 = data_in + len;
     float *imag_1 = data_in + 2*len;
     float *imag_2 = data_in + 3*len;
 
-    
-    // 只有两个，然而第一个不需要计算（W全是1）
+    // 只有两行，然而第一行不需要计算（W全是1）
     double a,b,c,d,real_w,imag_w;
     for (int i = 0; i < stride; i++)
     {
@@ -240,17 +242,17 @@ __device__ void single_merge_2(float *data_out, float* data_in, int len){
     }
 }
 
-extern "C" void launch_half_256(half* data, tcfftHandle plan) {
+extern "C" void launch_half_256(half* data, half* result,tcfftHandle plan) {
     // 调用CUDA核心 
-    half_256<<<1, 32, sizeof(half) * plan.nx * 2 * plan.batch>>>(data, (half *)plan.dft, (half *)plan.twiddle);
+    half_256<<<1, 32, sizeof(half) * plan.nx * 2 * plan.batch>>>(data, result, (half *)plan.dft, (half *)plan.twiddle);
 }
 
-extern "C" void launch_single_256(float* data, tcfftHandle plan) {
+extern "C" void launch_single_256(float* data, float* result, tcfftHandle plan) {
     // 调用CUDA核心 
-    single_256<<<1, 32, sizeof(float)*plan.nx*2*plan.batch>>>(data, (float *)plan.dft, (float *)plan.twiddle);
+    single_256<<<1, 32, sizeof(float)*plan.nx*2*plan.batch>>>(data, result, (float *)plan.dft, (float *)plan.twiddle);
 }
 
-extern "C" void launch_single_512(float* data, tcfftHandle plan) {
+extern "C" void launch_single_512(float* data, float* result,tcfftHandle plan) {
     // 调用CUDA核心 
-    single_512<<<1, 32, sizeof(float)*plan.nx*2*plan.batch>>>(data, (float *)plan.dft, (float *)plan.twiddle);
+    single_512<<<1, 32, sizeof(float)*plan.nx*2*plan.batch>>>(data, result, (float *)plan.dft, (float *)plan.twiddle);
 }

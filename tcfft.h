@@ -40,14 +40,14 @@ struct tcfftHandle{
 
 tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision precision);
 
-tcfftResult tcfftExecB2B(tcfftHandle plan, half *data);
+tcfftResult tcfftExecB2B(tcfftHandle plan, half *data, half *result);
 
-tcfftResult tcfftExecC2C(tcfftHandle plan, float *data);
+tcfftResult tcfftExecC2C(tcfftHandle plan, float *data, float *result);
 
 tcfftResult tcfftDestroy(tcfftHandle plan);
 
 // 以下是内核函数的相关定义
-extern "C" void launch_half_256(half* data, tcfftHandle plan);
-extern "C" void launch_single_256(float* data, tcfftHandle plan);
-extern "C" void launch_single_512(float* data, tcfftHandle plan);
+extern "C" void launch_half_256(half* data, half* result,tcfftHandle plan);
+extern "C" void launch_single_256(float* data, float* result, tcfftHandle plan);
+extern "C" void launch_single_512(float* data, float* result,tcfftHandle plan);
 #endif

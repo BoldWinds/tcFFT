@@ -125,22 +125,22 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
 /**
  * @brief 执行半精度一维FFT
 */
-tcfftResult tcfftExecB2B(tcfftHandle plan, half *data){
-    launch_half_256(data, plan);
+tcfftResult tcfftExecB2B(tcfftHandle plan, half *data, half *result){
+    launch_half_256(data, result, plan);
     return TCFFT_SUCCESS;
 }
 
 /**
  * @brief 执行单精度一维FFT
 */
-tcfftResult tcfftExecC2C(tcfftHandle plan, float *data){
+tcfftResult tcfftExecC2C(tcfftHandle plan, float *data, float *result){
     switch (plan.nx)
     {
     case 256:
-        launch_single_256(data, plan);
+        launch_single_256(data, result, plan);
         break;
     case 512:
-        launch_single_512(data, plan);
+        launch_single_512(data, result, plan);
         break;
     default:
         return TCFFT_NOT_SUPPORTED;
