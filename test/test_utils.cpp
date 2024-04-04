@@ -62,10 +62,10 @@ void generate_data(double *data, int n, int batch, int seed = 42){
     srand(seed);
     for (int i = 0; i < batch; ++i){
         for (int j = 0; j < n; ++j){
-            //data[    j * 2 + i * n * 2] = 1.0f * rand() / RAND_MAX;
-            //data[1 + j * 2 + i * n * 2] = 1.0f * rand() / RAND_MAX;
-            data[    j * 2 + i * n * 2] = double(j);
-            data[1 + j * 2 + i * n * 2] = 0;
+            data[    j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            data[1 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            //data[    j * 2 + i * n * 2] = double(j);
+            //data[1 + j * 2 + i * n * 2] = 0;
         }
     }  
 }

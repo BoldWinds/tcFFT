@@ -19,10 +19,10 @@ int main(int argc, char *argv[]){
         case 's':   // 设置随机种子
             seed = atoi(optarg);
             break;
-        case 'p':   // 设置随机种子
+        case 'p':   // 设置计算精度
             precision = atoi(optarg);
             break;
-        case 't':   // 设置随机种子
+        case 't':   // 设置计算次数
             times = atoi(optarg);
             break;
         case '?':   // 未知选项
@@ -57,7 +57,7 @@ int main(int argc, char *argv[]){
     printf("tcfft error rate: ");
     printf("%e\n", get_error(tested, standard, n, n_batch));
 
-    /*printf("Test: \n");
+    /*rintf("Test: \n");
     printMatrix(tested, 2, 256);
     printf("\n\n\n");
     printf("Standard: \n");

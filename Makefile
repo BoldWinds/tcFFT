@@ -1,6 +1,6 @@
 OBJ = test
 	
-FLAGS = -std=c++11 -lcublas -gencode arch=compute_86,code=sm_86 -res-usage -lcudart -lfftw3 -lcufft -lineinfo -Xcompiler -fopenmp
+FLAGS = -std=c++11 -lcublas -gencode arch=compute_80,code=sm_80 -res-usage -lcudart -I/data/lbw/fftw/include -L/data/lbw/fftw/lib -lfftw3 -lcufft -lineinfo -Xcompiler -fopenmp
 
 ifdef DEBUG
 FLAGS += -g -G
