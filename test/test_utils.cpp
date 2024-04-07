@@ -185,15 +185,20 @@ void cufft_exec(double *data, double *result, int n, int batch, int times){
     T* device_data = get_device_data<T>(data, n, batch);
     T* device_result;
     cudaMalloc(&device_result, sizeof(T) * 2 * n * batch);
-    auto start = std::chrono::high_resolution_clock::now();
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
     for (int i = 0; i < times; i++){
         cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
         cudaDeviceSynchronize();
     }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
     get_host_result<T>(device_result, result, n , batch);
-    printf("CUFFT use time: %lf ms\n", duration.count());
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    std::cout << "CUFFT time: " << milliseconds << " ms" << std::endl;
 }
 
 

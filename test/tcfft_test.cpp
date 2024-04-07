@@ -160,7 +160,10 @@ void finalize(double *result){
  * @param iter  执行次数
 */
 void doit(int iter){
-    auto start = std::chrono::high_resolution_clock::now();
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
     switch (plan.precision){
         case TCFFT_HALF:
             for (int t = 0; t < iter; ++t){
@@ -178,8 +181,9 @@ void doit(int iter){
             printf("error in precision\n");
             break;
     }
-    cudaDeviceSynchronize();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    printf("TCFFT use time: %lf ms\n", duration.count());
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    std::cout << "Mine time: " << milliseconds << " ms" << std::endl;
 }
