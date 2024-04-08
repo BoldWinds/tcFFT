@@ -47,7 +47,6 @@ tcfftResult tcfftExecC2C(tcfftHandle plan, float *data, float *result);
 tcfftResult tcfftDestroy(tcfftHandle plan);
 
 // 以下是内核函数的相关定义
+extern "C" tcfftResult launch_single(float* data, float* result, tcfftHandle plan);
 extern "C" void launch_half_256(half* data, half* result,tcfftHandle plan);
-extern "C" void launch_single_256(float* data, float* result, tcfftHandle plan);
-extern "C" void launch_single_512(float* data, float* result,tcfftHandle plan);
 #endif

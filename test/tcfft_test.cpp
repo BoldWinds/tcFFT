@@ -50,7 +50,6 @@ void gen_rev(int N, int rev[], int radices[], int n_radices) {
 */
 void setup(double *data, int n, int batch, int precision){
     int *trans = (int *)malloc(sizeof(int) * n);
-    for (int i = 0; i < n; i++) trans[i] = i;
     switch (precision){
         case 1:{
             tcfftPlan1d(&plan, n, batch, TCFFT_SINGLE);

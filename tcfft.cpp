@@ -29,21 +29,6 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
             plan->radices = new int[plan->n_radices]{16, 16};
             plan->n_mergings = 0;
             break;
-        case 512:
-            plan->n_radices = 3;
-            plan->radices = new int[plan->n_radices]{16, 16, 2};
-            plan->n_mergings = 1;
-            plan->mergings = new int[1]{0};
-        case 1024:
-            plan->n_radices = 3;
-            plan->radices = new int[plan->n_radices]{16, 16, 4};
-            plan->n_mergings = 1;
-            plan->mergings = new int[1]{0};
-        case 256*256:
-            plan->n_radices = 4;
-            plan->radices = new int[plan->n_radices]{16, 16, 16, 16};
-            plan->n_mergings = 1;
-            plan->mergings = new int[1]{0};
         default:
             return TCFFT_NOT_SUPPORTED;
         }
@@ -85,6 +70,14 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
                 plan->radices = new int[plan->n_radices]{16, 16, 2};
                 plan->n_mergings = 0;
                 break;
+            case 4096:
+                plan->n_radices = 3;
+                plan->radices = new int[plan->n_radices]{16, 16, 16};
+                plan->n_mergings = 1;
+            case 65536:
+                plan->n_radices = 4;
+                plan->radices = new int[plan->n_radices]{16, 16, 16, 16};
+                plan->n_mergings = 2;
             default:
                 return TCFFT_NOT_SUPPORTED;
         }
@@ -134,18 +127,7 @@ tcfftResult tcfftExecB2B(tcfftHandle plan, half *data, half *result){
  * @brief 执行单精度一维FFT
 */
 tcfftResult tcfftExecC2C(tcfftHandle plan, float *data, float *result){
-    switch (plan.nx)
-    {
-    case 256:
-        launch_single_256(data, result, plan);
-        break;
-    case 512:
-        launch_single_512(data, result, plan);
-        break;
-    default:
-        return TCFFT_NOT_SUPPORTED;
-    }
-    return TCFFT_SUCCESS;
+    return launch_single(data, result, plan);
 }
 
 tcfftResult tcfftDestroy(tcfftHandle plan){
