@@ -4,46 +4,40 @@ tcfftHandle plan;
 void* in_device, *result_device;
 
 /**
- * @brief           转置函数
+ * @brief 位逆序
  * 
- * @param trans     转置矩阵指针
- * @param row       行数
- * @param col       列数
-*/
-void transpose(int *trans, int row, int col){
-    int *tmp = (int *)malloc(sizeof(int) * row * col);
-    for (int i = 0; i < row; i++){
-        for (int j = 0; j < col; j++){
-            tmp[j + col * i] = trans[j + col * i];
-        }
-    }
-    for (int i = 0; i < col; i++){
-        for (int j = 0; j < row; j++){
-            trans[j + row * i] = tmp[i + col * j];
-        }
-    }
-    free(tmp);
-}
-
-/**
- * @brief           数据重排列函数
- * 
- * @param n         数据长度
- * @param data     要处理的数据
- * @param radices   分解的基数
+ * @param N         长度
+ * @param rev       存储位逆序后的索引数组
+ * @param radices   基数数组
  * @param n_radices 基数数量
 */
-void reposition(int n, int *data, int *radices, int n_radices){
-    if (n_radices == 2){
-        transpose(data, radices[1], radices[0]);
-    }else{
-        int row = radices[n_radices - 1];
-        int col = n / radices[n_radices - 1];
-        transpose(data, col, row);
-        for (int i = 0; i < row; i++){
-            reposition(col, data + i * col, radices, n_radices - 1);
+void gen_rev(int N, int rev[], int radices[], int n_radices) {
+    int *tmp_0 = (int *)malloc(sizeof(int) * N);
+    int *tmp_1 = (int *)malloc(sizeof(int) * N);
+    int now_N = N;
+
+    // 初始化tmp_0数组
+    for (int i = 0; i < N; ++i) tmp_0[i] = i;
+
+    // 对于radices数组中的每个基数，执行重排操作
+    for (int i = n_radices - 1; i >= 0; --i) {
+        for (int j = 0; j < N; j += now_N) {
+            for (int k = 0; k < radices[i]; ++k) {
+                for (int l = 0; l < now_N / radices[i]; ++l) {
+                    tmp_1[j + l + k * (now_N / radices[i])] = tmp_0[j + l * radices[i] + k];
+                }
+            }
         }
+        now_N /= radices[i];
+        std::swap(tmp_0, tmp_1);
     }
+
+    // 将最终的逆序排列结果复制到rev
+    for (int i = 0; i < N; ++i) rev[i] = tmp_0[i];
+
+    // 释放临时数组
+    free(tmp_0);
+    free(tmp_1);
 }
 
 /**
@@ -60,7 +54,7 @@ void setup(double *data, int n, int batch, int precision){
     switch (precision){
         case 1:{
             tcfftPlan1d(&plan, n, batch, TCFFT_SINGLE);
-            reposition(n, trans, plan.radices, plan.n_radices);
+            gen_rev(n, trans, plan.radices, plan.n_radices);
             float* in_host = (float *)malloc(sizeof(float) * n * 2 * batch);            
             for (int j = 0; j < batch; ++j){
                 for (int i = 0; i < n; ++i){
@@ -75,7 +69,7 @@ void setup(double *data, int n, int batch, int precision){
         }
         case 2:{
             tcfftPlan1d(&plan, n, batch, TCFFT_DOUBLE);
-            reposition(n, trans, plan.radices, plan.n_radices);
+            gen_rev(n, trans, plan.radices, plan.n_radices);
             double* in_host = (double *)malloc(sizeof(double) * n * 2 * batch);
             for (int j = 0; j < batch; ++j){
                 for (int i = 0; i < n; ++i){
@@ -90,7 +84,7 @@ void setup(double *data, int n, int batch, int precision){
         }
         default:{
             tcfftPlan1d(&plan, n, batch, TCFFT_HALF);
-            reposition(n, trans, plan.radices, plan.n_radices);
+            gen_rev(n, trans, plan.radices, plan.n_radices);
             half* in_host = (half *)malloc(sizeof(half) * n * 2 * batch);
             for (int j = 0; j < batch; ++j){
                 for (int i = 0; i < n; ++i){
