@@ -153,6 +153,9 @@ void finalize(double *result){
  * @param iter  执行次数
 */
 void doit(int iter){
+    tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+    tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+    tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -161,11 +164,13 @@ void doit(int iter){
         case TCFFT_HALF:
             for (int t = 0; t < iter; ++t){
                 tcfftExecB2B(plan, (half *)in_device, (half*) result_device);
+                cudaDeviceSynchronize();
             }
             break;
         case TCFFT_SINGLE:
             for (int t = 0; t < iter; ++t){
                 tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+                cudaDeviceSynchronize();
             }
             break;
         case TCFFT_DOUBLE:

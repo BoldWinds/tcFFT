@@ -74,10 +74,12 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
                 plan->n_radices = 3;
                 plan->radices = new int[plan->n_radices]{16, 16, 16};
                 plan->n_mergings = 1;
+                break;
             case 65536:
                 plan->n_radices = 4;
                 plan->radices = new int[plan->n_radices]{16, 16, 16, 16};
                 plan->n_mergings = 2;
+                break;
             default:
                 return TCFFT_NOT_SUPPORTED;
         }

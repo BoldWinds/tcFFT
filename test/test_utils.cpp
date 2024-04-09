@@ -62,10 +62,10 @@ void generate_data(double *data, int n, int batch, int seed = 42){
     srand(seed);
     for (int i = 0; i < batch; ++i){
         for (int j = 0; j < n; ++j){
-            data[    j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
-            data[1 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
-            //data[    j * 2 + i * n * 2] = double(j);
-            //data[1 + j * 2 + i * n * 2] = 0;
+            //data[    j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            //data[1 + j * 2 + i * n * 2] = 0.0001f * rand() / RAND_MAX;
+            data[    j * 2 + i * n * 2] = double(j);
+            data[1 + j * 2 + i * n * 2] = 0;
         }
     }  
 }
@@ -185,6 +185,9 @@ void cufft_exec(double *data, double *result, int n, int batch, int times){
     T* device_data = get_device_data<T>(data, n, batch);
     T* device_result;
     cudaMalloc(&device_result, sizeof(T) * 2 * n * batch);
+    cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
+    cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
+    cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
