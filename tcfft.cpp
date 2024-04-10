@@ -84,10 +84,13 @@ tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision pre
                 return TCFFT_NOT_SUPPORTED;
         }
         float* tmp = (float *)malloc(sizeof(float) * 512);
-        for (int i = 0; i < 16; ++i){
-            for (int j = 0; j < 16; ++j){
-                tmp[16 * i + j] = cosf(2 * M_PI * i * j / 16);
-                tmp[16 * i + j + 256] = -sinf(2 * M_PI * i * j / 16);
+        // 对dft矩阵进行重排，以适应wmma矩阵乘法的大小限制并减少多余global内存访问：将16*16行优先的矩阵变为两个16*8的行优先矩阵先后排列
+        for (int i = 0; i < 16; i++){
+            for(int j = 0; j < 8; j++){
+                tmp[      8 * i + j] = cosf(2 * M_PI * i * j / 16);
+                tmp[128 + 8 * i + j] = cosf(2 * M_PI * i * (j + 8) / 16);
+                tmp[256 + 8 * i + j] = sinf(- 2 * M_PI * i * j / 16);
+                tmp[384 + 8 * i + j] = sinf(- 2 * M_PI * i * (j + 8) / 16);
             }
         }
         // 将旋转因子存入dft

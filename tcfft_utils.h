@@ -82,6 +82,32 @@ __device__ inline void complex_mul_single(
     wmma::mma_sync(real_out, imag_B1, imag_D1, real_out);
     wmma::mma_sync(real_out, imag_B2, imag_D2, real_out);
     for (int i = 0; i < real_out.num_elements; i++) real_out.x[i] = -real_out.x[i];
+    wmma::mma_sync(imag_out, real_A1, imag_D1, imag_out);
+    wmma::mma_sync(real_out, real_A1, real_C1, real_out);
+    wmma::mma_sync(imag_out, real_A2, imag_D2, imag_out);
+    wmma::mma_sync(real_out, real_A2, real_C2, real_out);
+    wmma::mma_sync(imag_out, imag_B1, real_C1, imag_out);
+    wmma::mma_sync(imag_out, imag_B2, real_C2, imag_out);
+}
+
+__device__ inline void complex_mul_single(
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_A1,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_A2,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_B1,
+    wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_B2,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_C1,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &real_C2,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_D1,
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> &imag_D2,
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> &real_out,
+    wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> &imag_out) {
+    // 赋初值为0
+    wmma::fill_fragment(real_out, 0.0);
+    wmma::fill_fragment(imag_out, 0.0);
+
+    wmma::mma_sync(real_out, imag_B1, imag_D1, real_out);
+    wmma::mma_sync(real_out, imag_B2, imag_D2, real_out);
+    for (int i = 0; i < real_out.num_elements; i++) real_out.x[i] = -real_out.x[i];
     wmma::mma_sync(real_out, real_A1, real_C1, real_out);
     wmma::mma_sync(real_out, real_A2, real_C2, real_out);
     wmma::mma_sync(imag_out, real_A1, imag_D1, imag_out);
@@ -89,7 +115,6 @@ __device__ inline void complex_mul_single(
     wmma::mma_sync(imag_out, imag_B1, real_C1, imag_out);
     wmma::mma_sync(imag_out, imag_B2, real_C2, imag_out);
 }
-
 
 /**
  * @brief 计算半精度旋转因子
