@@ -66,7 +66,8 @@ __global__ void half_256(half *data, half *result, half *dft, half *twiddle) {
  * @param twiddle   twiddle矩阵
 */
 __global__ void single_256(float *data, float* result, float *dft, float *twiddle) {
-    __shared__ float temp[32][8];
+    const int row = 16;
+    __shared__ float temp[32][row];
 
     // 加载dft矩阵
     wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_real_1;
@@ -112,15 +113,18 @@ __global__ void single_256(float *data, float* result, float *dft, float *twiddl
     __syncthreads();
 
     // 将计算结果重新存储回frag_data，然后在读取时转置
-    wmma::store_matrix_sync(reinterpret_cast<float*>(&temp[0][0]), frag_out_real, 16, wmma::mem_row_major);
-    wmma::load_matrix_sync(frag_data_real_1, reinterpret_cast<float*>(&temp[0][0]), 16);
-    wmma::load_matrix_sync(frag_data_real_2, reinterpret_cast<float*>(&temp[1][0]), 16);
-    wmma::store_matrix_sync(reinterpret_cast<float*>(&temp[0][0]), frag_out_imag, 16, wmma::mem_row_major);
-    wmma::load_matrix_sync(frag_data_imag_1, reinterpret_cast<float*>(&temp[0][0]), 16);
-    wmma::load_matrix_sync(frag_data_imag_2, reinterpret_cast<float*>(&temp[1][0]), 16);
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_real_1_row;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_real_2_row;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_imag_1_row;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_imag_2_row;
+    wmma::store_matrix_sync(reinterpret_cast<float*>(&temp[0][0]), frag_out_real, row, wmma::mem_col_major);
+    wmma::store_matrix_sync(reinterpret_cast<float*>(&temp[16][0]), frag_out_imag, row, wmma::mem_col_major);
+    wmma::load_matrix_sync(frag_data_real_1_row, reinterpret_cast<float*>(&temp[0][0]), row);
+    wmma::load_matrix_sync(frag_data_real_2_row, reinterpret_cast<float*>(&temp[8][0]), row);
+    wmma::load_matrix_sync(frag_data_imag_1_row, reinterpret_cast<float*>(&temp[16][0]), row);
+    wmma::load_matrix_sync(frag_data_imag_2_row, reinterpret_cast<float*>(&temp[24][0]), row);
 
-    complex_mul_single(frag_dft_real_1, frag_dft_real_2, frag_dft_imag_1, frag_dft_imag_2, frag_data_real_1, frag_data_real_2, frag_data_imag_1, frag_data_imag_2, frag_out_real, frag_out_imag);
-
+    complex_mul_single(frag_dft_real_1, frag_dft_real_2, frag_dft_imag_1, frag_dft_imag_2, frag_data_real_1_row, frag_data_real_2_row, frag_data_imag_1_row, frag_data_imag_2_row, frag_out_real, frag_out_imag);
     // 将数据存储回去
     wmma::store_matrix_sync(result + blockIdx.x * 256, frag_out_real, 16, wmma::mem_row_major);
     wmma::store_matrix_sync(result + blockIdx.x * 256 + gridDim.x * 256, frag_out_imag, 16, wmma::mem_row_major);
