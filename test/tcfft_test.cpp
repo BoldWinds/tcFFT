@@ -153,9 +153,12 @@ void finalize(double *result){
  * @param iter  执行次数
 */
 void doit(int iter){
-    tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
-    tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
-    tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+    if(iter > 1){
+        // 迭代次数大于1时先warm up
+        tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+        tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+        tcfftExecC2C(plan, (float *)in_device, (float*) result_device);
+    }
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);

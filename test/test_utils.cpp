@@ -185,9 +185,12 @@ void cufft_exec(double *data, double *result, int n, int batch, int times){
     T* device_data = get_device_data<T>(data, n, batch);
     T* device_result;
     cudaMalloc(&device_result, sizeof(T) * 2 * n * batch);
-    cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
-    cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
-    cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
+    if(times > 1){
+        // 迭代次数大于1时先warm up
+        cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
+        cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
+        cufftXtExec(plan, device_data, device_result, CUFFT_FORWARD);
+    }
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
