@@ -32,10 +32,10 @@ struct tcfftHandle{
     int n_radices;    // 基数数量
     int* radices;
     int n_mergings;
-    int* mergings;
     tcfftPrecision precision;
     void *dft;
     void *twiddle;
+    void *merge_twiddles;
 };
 
 tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision precision);
