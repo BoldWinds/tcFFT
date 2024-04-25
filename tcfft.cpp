@@ -3,6 +3,7 @@
 
 tcfftResult setup_half(tcfftHandle *plan);
 tcfftResult setup_single(tcfftHandle *plan);
+void alloc_twiddle(tcfftHandle *plan);
 
 /**
  * @brief 创建一个FFT计划
@@ -56,6 +57,10 @@ tcfftResult tcfftDestroy(tcfftHandle plan){
     cudaFree(plan.dft);
     cudaFree(plan.twiddle);
     free(plan.radices);
+    for(int i = 0 ; i < plan.n_mergings; i++){
+        cudaFree(plan.merge_twiddles[i]);
+    }
+    free(plan.merge_twiddles);
     return TCFFT_SUCCESS;
 }
 
@@ -150,6 +155,30 @@ tcfftResult setup_single(tcfftHandle *plan){
     cudaMemcpy(plan->twiddle, tmp, sizeof(float) * 512, cudaMemcpyHostToDevice);
     free(tmp);
     // 分配merge时的twiddle矩阵
-
+    alloc_twiddle(plan);
     return TCFFT_SUCCESS;
+}
+
+void alloc_twiddle(tcfftHandle *plan){
+    float *real, *imag, *real_tmp, *imag_tmp;
+    plan->merge_twiddles = (void **)malloc(plan->n_mergings * sizeof(float *) * plan->n_mergings);
+    real_tmp = (float *)malloc(sizeof(float) * 256);
+    imag_tmp = (float *)malloc(sizeof(float) * 256);
+    int len = 256;
+    for(int i = 0; i < plan->n_mergings; i++){
+        cudaMalloc(&(plan->merge_twiddles[i]), sizeof(float) * len * 16 * 2);
+        for(int start = 0 ; start < len; start += 16){
+            for (int row = 0; row < 16; row++){
+                for(int col = 0; col < 16; col++){
+                    real_tmp[16 * row + col] =  cosf(2 * M_PI * row * (col + start) / (16 * len));
+                    imag_tmp[16 * row + col] = -sinf(2 * M_PI * row * (col + start) / (16 * len));
+                }
+            }
+            cudaMemcpy((float*)plan->merge_twiddles[i] + start * 32,        real_tmp, sizeof(float) * 256, cudaMemcpyHostToDevice);
+            cudaMemcpy((float*)plan->merge_twiddles[i] + start * 32 + 256,  imag_tmp, sizeof(float) * 256, cudaMemcpyHostToDevice);
+        }
+        len *= 16;
+    }
+    free(real_tmp);
+    free(imag_tmp);
 }

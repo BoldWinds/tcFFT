@@ -35,7 +35,7 @@ struct tcfftHandle{
     tcfftPrecision precision;
     void *dft;
     void *twiddle;
-    void *merge_twiddles;
+    void **merge_twiddles;
 };
 
 tcfftResult tcfftPlan1d(tcfftHandle *plan, int nx, int batch, tcfftPrecision precision);

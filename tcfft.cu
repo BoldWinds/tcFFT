@@ -207,31 +207,40 @@ __global__ void single_512(float *data, float* result, float *dft, float *twiddl
  * @param dft       DFT矩阵
  * @param len       每个FFT的长度，用于确定读取矩阵时的步长
 */
-__global__ void single_merge_16(float *data, float *dft){
-    extern __shared__ float smem[];
-    // 1. 计算按元素乘法
-    //int len = blockDim.x * 16;
-    //int nx = blockDim.x * blockDim.y * 256;
-    //int batch = gridDim.z;
-    //int stride = len;
-    //int start = 16 * blockIdx.x + 16 * len * blockIdx.y;
-    int row = threadIdx.x / 2;
-    int between_real_imag = blockDim.x * blockDim.y * blockDim.z * 256;
-    int thread_start = blockIdx.y * 256 * blockDim.x + blockIdx.x * 16 + row * blockDim.x * 16 + 8 * (threadIdx.x % 2);
-    for (int i = 0; i < 8; i++){   
-        double rad = 2 *  M_PI * row  * (16 * blockIdx.y + i + 8 * (threadIdx.x % 2)) / (16 * 16 * blockDim.x);
-        smem[threadIdx.x * 8 + i] = data[thread_start + i] * cos(rad) - data[thread_start + i + between_real_imag] * sin(-rad);
-        smem[threadIdx.x * 8 + i + 256] = data[thread_start + i] * sin(-rad) + data[thread_start + i + between_real_imag] * cos(rad);
-    }
-    __syncthreads();
+__global__ void single_merge_16(float *data, float *dft, float *twiddle){
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_twiddle_real_1;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_twiddle_real_2;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_twiddle_imag_1;
+    wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_twiddle_imag_2;
+    wmma::load_matrix_sync(frag_twiddle_real_1, twiddle + blockIdx.x * 32, 16);
+    wmma::load_matrix_sync(frag_twiddle_real_2, twiddle + blockIdx.x * 32 + 128, 16);
+    wmma::load_matrix_sync(frag_twiddle_imag_1, twiddle + blockIdx.x * 32 + 256, 16);
+    wmma::load_matrix_sync(frag_twiddle_imag_2, twiddle + blockIdx.x * 32 + 384, 16);
     wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_real_1;
     wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_real_2;
     wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_imag_1;
     wmma::fragment<wmma::matrix_b, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_data_imag_2;
-    wmma::load_matrix_sync(frag_data_real_1, smem, 16);
-    wmma::load_matrix_sync(frag_data_real_2, smem + 128, 16);
-    wmma::load_matrix_sync(frag_data_imag_1, smem + 256, 16);
-    wmma::load_matrix_sync(frag_data_imag_2, smem + 384, 16);
+    wmma::load_matrix_sync(frag_data_real_1, data + blockIdx.y * 256 * blockDim.x + blockIdx.x * 16, 16);
+    wmma::load_matrix_sync(frag_data_real_2, data + blockIdx.y * 256 * blockDim.x + blockIdx.x * 16 + 128, 16);
+    wmma::load_matrix_sync(frag_data_imag_1, data + blockIdx.y * 256 * blockDim.x + blockIdx.x * 16 + blockDim.x * blockDim.y * blockDim.z * 256, 16);
+    wmma::load_matrix_sync(frag_data_imag_2, data + blockIdx.y * 256 * blockDim.x + blockIdx.x * 16 + blockDim.x * blockDim.y * blockDim.z * 256 + 128, 16);
+    double a, b, c, d;
+    for (int i = 0; i < frag_data_real_1.num_elements; i++)
+    {
+        a = frag_data_real_1.x[i] * frag_twiddle_real_1.x[i];
+        b = frag_data_imag_1.x[i] * frag_twiddle_imag_1.x[i];
+        c = frag_data_real_1.x[i] * frag_twiddle_imag_1.x[i];
+        d = frag_data_imag_1.x[i] * frag_twiddle_real_1.x[i];
+        frag_data_real_1.x[i] = float(a - b);
+        frag_data_imag_1.x[i] = float(c + d);
+        a = frag_data_real_2.x[i] * frag_twiddle_real_2.x[i];
+        b = frag_data_imag_2.x[i] * frag_twiddle_imag_2.x[i];
+        c = frag_data_real_2.x[i] * frag_twiddle_imag_2.x[i];
+        d = frag_data_imag_2.x[i] * frag_twiddle_real_2.x[i];
+        frag_data_real_2.x[i] = float(a - b);
+        frag_data_imag_2.x[i] = float(c + d);
+    }
+    
     wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_real_1;
     wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_real_2;
     wmma::fragment<wmma::matrix_a, M_SINGLE, N_SINGLE, K_SINGLE, wmma::precision::tf32, wmma::row_major> frag_dft_imag_1;
@@ -240,6 +249,7 @@ __global__ void single_merge_16(float *data, float *dft){
     wmma::load_matrix_sync(frag_dft_real_2, dft + 128, 8);
     wmma::load_matrix_sync(frag_dft_imag_1, dft + 256, 8);
     wmma::load_matrix_sync(frag_dft_imag_2, dft + 384, 8);
+
     wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> frag_out_real;
     wmma::fragment<wmma::accumulator, M_SINGLE, N_SINGLE, K_SINGLE, float> frag_out_imag;
     
@@ -249,6 +259,7 @@ __global__ void single_merge_16(float *data, float *dft){
     // 3. 同步数据
     wmma::store_matrix_sync(data + blockIdx.y * 256 * blockDim.x + blockIdx.x * 16, frag_out_real, blockDim.x * 16, wmma::mem_row_major);
     wmma::store_matrix_sync(data + blockIdx.y * 256 * blockDim.x + blockIdx.x * 16 + blockDim.x * blockDim.y * blockDim.z * 256, frag_out_imag, blockDim.x * 16, wmma::mem_row_major);
+    
 }
 
 
@@ -310,7 +321,7 @@ extern "C" tcfftResult launch_single(float *data, float *result, tcfftHandle pla
     for (int i = 0; i < plan.n_mergings; i++)
     {   
         dim3 blocks = dim3(len / 16, plan.nx / (16 * len), plan.batch);
-        single_merge_16<<<blocks, 32, sizeof(float) * 512>>>(result, (float *)plan.dft);
+        single_merge_16<<<blocks, 32>>>(result, (float *)plan.dft, (float *)plan.merge_twiddles[i]);
         len *= 16;
     }
     return TCFFT_SUCCESS;
